@@ -10,6 +10,8 @@
 #define BUFFER_SIZE 1024
 #define UNAME_LEN 10
 
+#define CHANNEL_LEN 10
+
 size_t client_count = 0;
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -17,37 +19,84 @@ pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 typedef struct {
   int socket;
   char username[UNAME_LEN];
+  int channel;
+  pthread_mutex_t lock;
 } client_t;
 
-client_t clients[MAX_CLIENTS];
+client_t *clients[MAX_CLIENTS];
+
+void commandparser(char *message, client_t *cli){
+  char *command = message + 1;
+  for(size_t i = 1; i < strlen(message); i++)
+    command[i - 1] = message[i];
+  command[strcspn(command, "\n")] = '\0';
+
+  printf("%s sent command: %s\n", cli->username, command);
+  fflush(stdout);
+  
+  // serverside komennot pittää kans tehä rumilla iffeillä
+  if(strstr(command, "channel")){
+    char *numpart = command + 7;
+
+    while (*numpart == ' ') numpart ++;
+
+    int channelnum = atoi(numpart);
+
+    pthread_mutex_lock(&cli->lock);
+    cli->channel = channelnum;
+    pthread_mutex_unlock(&cli->lock);
+    
+    printf("%s changed channel to %d\n", cli->username, channelnum);
+  }
+}
+
 
 // lähetetään viesti kaikille (paitti lähettäjälle, se näkee sen jo)
-void broadcastmsg(char *message, int sender_socket){
+void broadcastmsg(char *message, client_t *cli){
   pthread_mutex_lock(&clients_mutex);
 
-  if(message[0] == '/'){ // backbone for commands that are sent to the server
-    pthread_mutex_unlock(&clients_mutex);
-    return;
-  }
+  size_t n = client_count;
+  client_t *temp[MAX_CLIENTS];
+  for(size_t i = 0; i < n; i++) temp[i] = clients[i];
+  
+  pthread_mutex_unlock(&clients_mutex);
 
-  for(size_t i = 0; i < client_count; i++){
-    if(clients[i].socket != sender_socket){
+  pthread_mutex_lock(&cli->lock);
+  int sender_channel = cli->channel;
+  pthread_mutex_unlock(&cli->lock);
+
+  for(size_t i = 0; i < n; i++){
+    client_t *target = temp[i];
+
+    pthread_mutex_lock(&target->lock);
+    int target_channel = target->channel;
+    pthread_mutex_unlock(&target->lock);
+
+    if(target->socket != cli->socket && target_channel == sender_channel){
       message[strcspn(message, "\n")] = '\0';
-      send(clients[i].socket, message, strlen(message), 0);
+      send(target->socket, message, strlen(message), 0);
     }
   }
 
-  pthread_mutex_unlock(&clients_mutex);
 }
 
 // checkataa kaikki usernamet ku joku connectaa
 int uname_exists(const char *username){
-  for(int i = 0; i < client_count; i++){
-    if(strcmp(clients[i].username, username) == 0){
-      return 1;
+  int found = 1;
+  size_t n = client_count;
+  client_t *temp[MAX_CLIENTS];
+  for(size_t i = 0; i < n; i++) temp[i] = clients[i];
+
+  //pthread_mutex_lock(&clients_mutex);
+  for(int i = 0; i < n; i++){
+    if(strcmp(temp[i]->username, username) == 0){
+      found = 0;
+      break;
     }
   }
-  return 0;
+
+  //pthread_mutex_unlock(&clients_mutex);
+  return found;
 }
 
 // kaikki clienttien in ja out data
@@ -63,12 +112,10 @@ void *handleclient(void *arg){
     free(cli);
     pthread_exit(NULL);
   }
-  cli->username[bytes_read] = '\0';
 
   cli->username[strcspn(cli->username, "\n")] = '\0';
 
-
-// jos uname on varattu ei päästetä sissään
+  // jos uname on varattu ei päästetä sissään
   pthread_mutex_lock(&clients_mutex);
   if(strlen(cli->username) == 0 || uname_exists(cli->username)){
     char msg[] = "Username invalid or taken.";
@@ -82,49 +129,65 @@ void *handleclient(void *arg){
     char msg[] = "username ok";
     send(cli->socket, msg, strlen(msg), 0);
   }
-
-  clients[client_count++] = *cli;
+  
   pthread_mutex_unlock(&clients_mutex);
 
   snprintf(buffer, sizeof(buffer), "%s joined\n", cli->username);
   printf("%s", buffer);
-  broadcastmsg(buffer, cli->socket);
+  broadcastmsg(buffer, cli);
 
   // chatloop
   while((bytes_read = recv(cli->socket, buffer, sizeof(buffer) -1 , 0)) > 0){
     buffer[bytes_read] = '\0';
-    char formatted[BUFFER_SIZE + UNAME_LEN];
-    snprintf(formatted, sizeof(formatted), "%s: %s\n", cli->username, buffer);
-    printf("%s", formatted);
-    broadcastmsg(formatted, cli->socket);
+
+  
+    if(buffer[0] == '/'){ // backbone for commands that are sent to the server      
+      commandparser(buffer, cli);
+    }
+    else{
+      char formatted[BUFFER_SIZE + UNAME_LEN];
+      snprintf(formatted, sizeof(formatted), "#%d @%s: %s\n",cli->channel, cli->username, buffer);
+      printf("%s", formatted);
+      broadcastmsg(formatted, cli);
+    }
   }
 
   //remove client
+  snprintf(buffer, sizeof(buffer), "%s left the chat.\n", cli->username);
+  printf("%s", buffer);
+  broadcastmsg(buffer, cli);
+  
+  close(cli->socket);
+
   pthread_mutex_lock(&clients_mutex);
   for(size_t i = 0; i < client_count; i++){
-    if(clients[i].socket == cli->socket){
-      clients[i] = clients[client_count - 1];
+    if(clients[i] == cli){
+      for(size_t j = i; j < client_count - 1; j++){
+        clients[j] = clients[j + 1];
+      }
+      clients[client_count - 1] = NULL;
       client_count--;
       break;
     }
   }
   pthread_mutex_unlock(&clients_mutex);
-
-  snprintf(buffer, sizeof(buffer), "%s left the chat.\n", cli->username);
-  printf("%s", buffer);
-  broadcastmsg(buffer, -1);
+  pthread_mutex_destroy(&cli->lock);
   
-  close(cli->socket);
   free(cli);
-  pthread_exit(NULL);
+  return NULL;
 }
 
 int main(void){
   printf("Enter desired port > ");
   int port;
+  /*
   if(scanf("%d", &port) > 65535){
     return 1;
   }
+  */
+  port = 8080;
+
+  printf("Port %d selected\n", port);
   
   int server_socket, client_socket;
 
@@ -164,16 +227,50 @@ int main(void){
   // normi operation loop
   while(1){
     client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_len);
-    if(client_socket == -1){
+    if(client_socket < 0){
       perror("accept failed\n");
       continue;
     }
 
-    client_t *cli = malloc(sizeof(client_socket));
+    client_t *cli = malloc(sizeof(client_t));
+    if(!cli){
+      close(addr_len);
+      continue;
+    }
     cli->socket = client_socket;
+    cli->channel = 0;
+    pthread_mutex_init(&cli->lock, NULL);
 
+    pthread_mutex_lock(&clients_mutex);
+    if(client_count >= MAX_CLIENTS){
+      pthread_mutex_unlock(&clients_mutex);
+      pthread_mutex_destroy(&cli->lock);
+      free(cli);
+      close(client_socket);
+      continue;
+    }
+
+    clients[client_count++] = cli;
+    pthread_mutex_unlock(&clients_mutex);
+    
     pthread_t tid;
-    pthread_create(&tid, NULL, handleclient, cli);
+    if(pthread_create(&tid, NULL, handleclient, cli) != 0){
+      pthread_mutex_lock(&clients_mutex);
+      for(size_t i = 0; i < client_count; i++){
+        if(clients[i] == cli){
+          for(size_t j = i; j + 1 < client_count; j++){
+            clients[j] = clients[j + 1];
+          }
+          clients[client_count - 1] = NULL;
+          client_count--;
+          break;
+        }
+      }
+      pthread_mutex_unlock(&clients_mutex);
+      pthread_mutex_destroy(&cli->lock);
+      free(cli);
+      continue;
+    }
     pthread_detach(tid);
 
     }

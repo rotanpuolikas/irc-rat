@@ -26,9 +26,13 @@
 #define UNAME_LEN 10
 #define BUFFER_SIZE 1024
 
+#define CHANNEL_LEN 10
+
 int sock;
 char uname[UNAME_LEN] = "";
 volatile int running = 1;
+
+int channelnum;
 
 // ctrl+c händläys
 void handle_sigint(int sig){
@@ -87,6 +91,7 @@ int main(void){
     perror("fgets failed");
     return 1;
   }
+  if(strstr(serverip, "local")) strcpy(serverip, "127.0.0.1");
 
   serverip[strcspn(serverip, "\n")] = '\0';
 
@@ -167,7 +172,7 @@ int main(void){
     char buffer[BUFFER_SIZE] = {'\0'};
     char* message;
     message = malloc(BUFFER_SIZE);
-    printf("%s: ", uname);
+    printf("#%d @%s: ", channelnum, uname);
     fflush(stdout);
     if(strlen(fgets(buffer, 1024, stdin)) > BUFFER_SIZE){
       printf("message too long");
@@ -179,6 +184,7 @@ int main(void){
       commandlen = strlen(buffer);
       command[strcspn(command, "\n")] = '\0';
       // exit komento joka exittaa, usko tai älä
+      // ei voi käyttää switch statementtia, pitää tehä rumasti
       if(strcmp(command, "exit") == 0){
         CLOSESOCKET(sock);
         #ifdef _WIN32
@@ -186,7 +192,14 @@ int main(void){
         #endif
         printf("exiting\n");
         free(message);
-        return 0;
+        exit(EXIT_SUCCESS);
+      }
+      else if(strstr(command, "channel")){
+        char *numpart = command + 7;
+
+        while(*numpart == ' ') numpart++;
+
+        channelnum = atoi(numpart);
       }
     }
     buffer[strcspn(buffer, "\n")] = '\0';
