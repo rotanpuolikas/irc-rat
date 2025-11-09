@@ -189,15 +189,13 @@ int main(void){
         return 0;
       }
     }
-    else{
-      buffer[strcspn(buffer, "\n")] = '\0';
-      if(strlen(buffer) == 0){
-        continue;
-      }
-      if(send(sock, buffer, strlen(buffer), 0) <= 0){
-        printf("\nmessage failed to send\n");
-        continue;
-      }
+    buffer[strcspn(buffer, "\n")] = '\0';
+    if(strlen(buffer) == 0){
+      continue;
+    }
+    if(send(sock, buffer, strlen(buffer), 0) <= 0){
+      printf("\nmessage failed to send\n");
+      continue;
     }
   }
   CLOSESOCKET(sock);

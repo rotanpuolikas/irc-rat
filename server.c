@@ -25,6 +25,11 @@ client_t clients[MAX_CLIENTS];
 void broadcastmsg(char *message, int sender_socket){
   pthread_mutex_lock(&clients_mutex);
 
+  if(message[0] == '/'){ // backbone for commands that are sent to the server
+    pthread_mutex_unlock(&clients_mutex);
+    return;
+  }
+
   for(size_t i = 0; i < client_count; i++){
     if(clients[i].socket != sender_socket){
       message[strcspn(message, "\n")] = '\0';
