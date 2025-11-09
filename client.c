@@ -21,7 +21,7 @@
   #define SOCK_ERR -1
 #endif
 
-#define PORT 8080
+#define PORT 42069
 #define MAX_RETRIES 5
 #define UNAME_LEN 10
 #define BUFFER_SIZE 1024
@@ -54,7 +54,7 @@ void *recievemsg(void *arg){
   while((bytes_read = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0){
     buffer[bytes_read] = '\0';
     printf("\r%s", buffer);
-    printf("\n%s: ", uname);
+    printf("\n#%d @%s: ", channelnum, uname);
     fflush(stdout);
   }
   printf("\nDisconnected from server\n");
