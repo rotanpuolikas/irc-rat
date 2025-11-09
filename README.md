@@ -19,5 +19,11 @@ IRC-RAT is not memory-safe. Do not host IRC-RAT as a public service.
 You have been warned.
 
 
+# TO COMPILE
+
+On all unix devices, just use gcc
+
+To compile on Windows, use mingw with the flags "-lws2_32 --static". This is to ensure the proper .dll files are included in the executable.
+
 
 -- rotta

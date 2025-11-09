@@ -6,7 +6,6 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#define PORT 8080
 #define MAX_CLIENTS 20
 #define BUFFER_SIZE 1024
 #define UNAME_LEN 10
@@ -116,6 +115,12 @@ void *handleclient(void *arg){
 }
 
 int main(void){
+  printf("Enter desired port > ");
+  int port;
+  if(scanf("%d", &port) > 65535){
+    return 1;
+  }
+  
   int server_socket, client_socket;
 
   struct sockaddr_in server_addr, client_addr;
@@ -130,7 +135,7 @@ int main(void){
 
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(PORT);
+  server_addr.sin_port = htons(port);
 
   int opt = 1;
   if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
@@ -149,7 +154,7 @@ int main(void){
     return 1;
   }
 
-  printf("listening on port %d\n", PORT);
+  printf("listening on port %d\n", port);
 
   // normi operation loop
   while(1){

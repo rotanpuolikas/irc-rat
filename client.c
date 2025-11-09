@@ -1,11 +1,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
 #include <pthread.h>
 #include <signal.h>
+
+#ifdef _WIN32
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  #pragma comment(lib, "ws2_32.lib")
+  #define CLOSESOCKET closesocket
+  #define SOCK_ERR SOCKET_ERROR
+  #define ssize_t int
+#else
+  #include <unistd.h>
+  #include <arpa/inet.h>
+  #include <sys/socket.h>
+  #define CLOSESOCKET close
+  #define INVALID_SOCKET -1
+  #define SOCKET int
+  #define SOCK_ERR -1
+#endif
 
 #define PORT 8080
 #define MAX_RETRIES 5
@@ -19,8 +33,12 @@ volatile int running = 1;
 // ctrl+c händläys
 void handle_sigint(int sig){
   running = 0;
-  close(sock);
+  if(sock != INVALID_SOCKET)
+    CLOSESOCKET(sock);
   printf("\nexiting\n");
+  #ifdef _WIN32
+    WSACleanup();
+  #endif
   exit(0);
 }
 
@@ -28,6 +46,7 @@ void handle_sigint(int sig){
 void *recievemsg(void *arg){
   char buffer[BUFFER_SIZE];
   int bytes_read;
+
   while((bytes_read = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0){
     buffer[bytes_read] = '\0';
     printf("\r%s", buffer);
@@ -45,12 +64,20 @@ int main(void){
 
   pthread_t recv_thread;
 
+
+  #ifdef _WIN32
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+      printf("WSAStartup failed.\n");
+      exit(1);
+    }
+  #endif
   signal(SIGINT, handle_sigint);
 
   sock = socket(AF_INET, SOCK_STREAM, 0);
   if(sock < 0){
     perror("socket creation failed");
-    exit(EXIT_FAILURE);
+    return 1;
   }
 
   printf("Enter ip address > ");
@@ -69,6 +96,9 @@ int main(void){
 
   if(inet_pton(AF_INET, serverip, &server_addr.sin_addr) <= 0){
     perror("Invalid IP address");
+    #ifdef _WIN32
+      WSACleanup();
+    #endif
     exit(EXIT_FAILURE);
   }
 
@@ -98,7 +128,7 @@ int main(void){
   }
   if(strlen(uname) == 0){
     printf("Username cannot be empty\n");
-    close(sock);
+    CLOSESOCKET(sock);
     return 0;
   }
 
@@ -109,7 +139,10 @@ int main(void){
   int bytes = recv(sock, response, sizeof(response) - 1, 0);
   if(bytes <= 0){
     printf("No response from server, connection closed\n");
-    close(sock);
+    CLOSESOCKET(sock);
+    #ifdef _WIN32
+      WSACleanup();
+    #endif
     return 0;
   }
   
@@ -117,7 +150,10 @@ int main(void){
   
   if(strstr(response, "taken") || strstr(response, "invalid")){
     printf("%s\n", response);
-    close(sock);
+    CLOSESOCKET(sock);
+    #ifdef _WIN32
+      WSACleanup();
+    #endif
   }
 
   // jos uname kävi servulle nii sisään vaan
@@ -144,7 +180,10 @@ int main(void){
       command[strcspn(command, "\n")] = '\0';
       // exit komento joka exittaa, usko tai älä
       if(strcmp(command, "exit") == 0){
-        close(sock);
+        CLOSESOCKET(sock);
+        #ifdef _WIN32
+          WSACleanup();
+        #endif
         printf("exiting\n");
         free(message);
         return 0;
@@ -161,7 +200,10 @@ int main(void){
       }
     }
   }
-  close(sock);
+  CLOSESOCKET(sock);
+  #ifdef _WIN32
+    WSACleanup();
+  #endif
   printf("\n");
 
   return 0;
