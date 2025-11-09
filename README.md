@@ -26,4 +26,15 @@ On all unix devices, just use gcc
 To compile on Windows, use mingw with the flags "-lws2_32 --static". This is to ensure the proper .dll files are included in the executable.
 
 
+# DEFAULTS
+
+The default port for clients is 42069 (real funny, i know)
+I might add a port selection system. Who knows.
+
+# COMMANDS
+
+/exit exits
+
+/channel (int) changes your channel to the channel specified in the (int) part.
+
 -- rotta
