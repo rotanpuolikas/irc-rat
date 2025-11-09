@@ -180,13 +180,11 @@ void *handleclient(void *arg){
 int main(void){
   printf("Enter desired port > ");
   int port;
-  /*
+  
   if(scanf("%d", &port) > 65535){
     return 1;
   }
-  */
-  port = 8080;
-
+  
   printf("Port %d selected\n", port);
   
   int server_socket, client_socket;
