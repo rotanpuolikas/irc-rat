@@ -37,4 +37,8 @@ I might add a port selection system. Who knows.
 
 /channel (int) changes your channel to the channel specified in the (int) part.
 
+# THANKS
+
+thanks to max for testing the client and two-way communication through the WAN
+
 -- rotta
